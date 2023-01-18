@@ -1,9 +1,16 @@
 // ignore_for_file: file_names
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
+import 'package:layout/FromJsonGetSensorModel.dart';
 import 'package:layout/components/ButtonDouble.dart';
 import 'package:layout/components/ButtonSingle.dart';
+import 'package:dio/dio.dart' as gt;
+import 'dart:io' as IO;
+import 'dart:io' ;
 
 import 'components/VoiceButtonPage.dart';
 
@@ -27,6 +34,7 @@ class _ControlePrincipalPage extends State<ControlePrincipalPage> {
   BluetoothConnection? connection;
   String? language;
 
+  List<FromJsonGetSensorModel> _models = [ ];
   // ignore: deprecated_member_use
   List<_Message> messages = <_Message>[];
   String _messageBuffer = '';
@@ -40,20 +48,47 @@ class _ControlePrincipalPage extends State<ControlePrincipalPage> {
   bool isDisconnecting = false;
   bool buttonClicado = false;
 
+  bool _isLoading = false;
   List<String> _languages = ['en_US', 'es_ES', 'pt_BR'];
 
   @override
   void initState() {
     super.initState();
-
     BluetoothConnection.toAddress(widget.server!.address).then((_connection) {
-      print('Connected to device');
+      print('Connected to device ');
+
+      _connection.input!.listen((event) {
+
+        String messege = Utf8Decoder().convert(event);
+
+        setState((){
+          _messageBuffer += "${messege}" + "\n";
+        });
+        try {
+          var json = jsonDecode(messege.replaceAll("'", '"'));
+
+          try {
+            _models.add(FromJsonGetSensorModel.fromJson(json));
+          }  catch (e) {
+            // TODO
+          }
+          json['ammonia'] = 0;
+          json['nitrite'] = 0;
+          json['nitrate'] = 0;
+          sendDataToServer(json);
+        }  catch (e) {
+          // TODO
+          Scaffold.of(context).showSnackBar(SnackBar(content: Text("اطلاعات ارسالی قابل پارس کردن نمیباشد.",textAlign: TextAlign.right,),backgroundColor: Colors.red,));
+
+        }
+      });
       connection = _connection;
       setState(() {
         
         isConnecting = false;
         isDisconnecting = false;
       });
+
 
       connection!.input!.listen(_onDataReceived).onDone(() {
         // Example: Detect which side closed the connection
@@ -67,16 +102,52 @@ class _ControlePrincipalPage extends State<ControlePrincipalPage> {
         } else {
           print('Disconnected remote!');
         }
-        if (mounted) {
-          setState(() {});
-        }
+
+        print('_ControlePrincipalPage.initState');
       });
     }).catchError((error) {
       print('Failed to connect, something is wrong!');
       print(error);
     });
-  }
 
+  }
+  void sendDataToServer(jsons) async {
+
+    setState((){
+      _isLoading=true;
+    });
+    final staticHeaders = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
+
+    try {
+      print('_HomePageState.getMainFunction start request');
+      var url = "https://api.smartmakran.ir/sensor";
+      gt.Dio dio = gt.Dio(gt.BaseOptions(headers: staticHeaders));
+
+      var response = await dio.post(url,data: jsons);
+      print('_HomePageState.getMainFunction ${response.statusCode}');
+
+      if(response.statusCode! >=200&&response.statusCode! <300){
+        Scaffold.of(context).showSnackBar(SnackBar(content: Text("با موفقیت به سرور ارسال شد",textAlign: TextAlign.right,),backgroundColor: Colors.green,));
+
+      }else{
+        Scaffold.of(context).showSnackBar(SnackBar(content: Text("مشکلی در ارسال به سمت سرور وجود دارد",textAlign: TextAlign.right,),backgroundColor: Colors.red,));
+
+      }
+      setState((){
+        _isLoading=false;
+      });
+
+
+    } catch (e) {
+      Scaffold.of(context).showSnackBar(SnackBar(content: Text("مشکلی در ارسال به سمت سرور وجود دارد 2",textAlign: TextAlign.right,),backgroundColor: Colors.red,));
+
+      print('_HomePageState.getMainFunction catch ( ${e}');
+      // TODO
+    }
+  }
   @override
   void dispose() {
     // Avoid memory leak (`setState` after dispose) and disconnect
@@ -115,328 +186,84 @@ class _ControlePrincipalPage extends State<ControlePrincipalPage> {
       );
     }).toList();
 
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.only(top: 10),
-        child: Center(
-          child: SizedBox(
-            height: MediaQuery.of(context).size.height,
-            width: MediaQuery.of(context).size.width,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          Container(
-                              height: 60, width: 90, child: SizedBox.shrink())
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          Container(
-                            height: 60,
-                            width: 90,
-                            child: VoiceButtonComponent(
-                                connection: connection,
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Center(
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height,
+                width: MediaQuery.of(context).size.width,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Column(children: [
+                              ButtonDoubleComponent(
+                                buttonName: "دریاقت وضعیت",
+                                comandOn: 'm',
+                                comandOff: 'm',
                                 clientID: clientID,
-                                languageSelected: language),
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Container(
-                                child: DropdownButton<String>(
-                                  value: language == null ? 'pt_BR' : language,
-                                  icon: const Icon(Icons.keyboard_arrow_down),
-                                  items: _languages.map((String items) {
-                                    return DropdownMenuItem(
-                                      value: items,
-                                      child: Text(items),
-                                    );
-                                  }).toList(),
-                                  // After selecting the desired option,it will
-                                  // change button value to selected value
-                                  onChanged: (String? newValue) {
-                                    setState(() {
-                                      language = newValue!;
-                                    });
-                                  },
-                                ),
-                              )
+                                connection: connection,
+                              ),
                             ]),
-                      ]),
+                            const SizedBox(width: 30),
+
+
+
+                          ]),
+                    ),
+
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: Container(
+
+                        child: DataTable(
+                            columns: [
+                              DataColumn(
+                                label: Text('ردیف'),
+                              ),
+                              DataColumn(
+                                label: Text('PH'),
+                              ),
+                              DataColumn(label: Text('oxygen'),),
+                              DataColumn(label: Text('temperature'),),
+
+                            ],
+                            rows: _models.asMap().entries.map((e) {
+                              return  DataRow(cells: [
+                                DataCell(Text(e.key.toString())),
+                                DataCell(Text(e.value.ph.toString())),
+                                DataCell(Text(e.value.oxygen.toString())),
+                                DataCell(Text(e.value.temperature.toString())),
+
+                              ]);
+                            }).toList()),
+                      ),
+                    )
+                  ],
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "A/B",
-                            comandOn: 'a',
-                            comandOff: 'b',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "C/D",
-                            comandOn: 'c',
-                            comandOff: 'd',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "E/F",
-                            comandOn: 'e',
-                            comandOff: 'f',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "G/H",
-                            comandOn: 'g',
-                            comandOff: 'h',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "I/J",
-                            comandOn: 'i',
-                            comandOff: 'j',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "K/L",
-                            comandOn: 'k',
-                            comandOff: 'l',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "M/N",
-                            comandOn: 'm',
-                            comandOff: 'n',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "O/P",
-                            comandOn: 'o',
-                            comandOff: 'p',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "Q/R",
-                            comandOn: 'q',
-                            comandOff: 'r',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "S/T",
-                            comandOn: 's',
-                            comandOff: 't',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "U/V",
-                            comandOn: 'u',
-                            comandOff: 'v',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "W/X",
-                            comandOn: 'w',
-                            comandOff: 'x',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "Y/Z",
-                            comandOn: 'y',
-                            comandOff: 'z',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "0/1",
-                            comandOn: '0',
-                            comandOff: '1',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "2/3",
-                            comandOn: '2',
-                            comandOff: '3',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "4/5",
-                            comandOn: '4',
-                            comandOff: '5',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "6/7",
-                            comandOn: '6',
-                            comandOff: '7',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 30),
-                        Column(children: [
-                          ButtonDoubleComponent(
-                            buttonName: "8/9",
-                            comandOn: '8',
-                            comandOff: '9',
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-                Padding(
-                  padding: const EdgeInsets.only(top: 30),
-                  child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Column(children: [
-                          ButtonSingleComponent(
-                            buttonName: "+",
-                            comandOn: '+',
-                            colorButton: Color.fromRGBO(238, 57, 61, 1),
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 10),
-                        Column(children: [
-                          ButtonSingleComponent(
-                            buttonName: "-",
-                            comandOn: '-',
-                            colorButton: Color.fromRGBO(8, 164, 113, 1),
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 10),
-                        Column(children: [
-                          ButtonSingleComponent(
-                            buttonName: "*",
-                            comandOn: '*',
-                            colorButton: Color.fromRGBO(239, 206, 45, 1),
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                        const SizedBox(width: 10),
-                        Column(children: [
-                          ButtonSingleComponent(
-                            buttonName: "/",
-                            comandOn: '/',
-                            colorButton: Color.fromRGBO(49, 86, 188, 1),
-                            clientID: clientID,
-                            connection: connection,
-                          ),
-                        ]),
-                      ]),
-                ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
+       if(_isLoading) Container(
+          decoration: BoxDecoration(
+            color: Colors.black.withOpacity(0.4),
+          ),
+          child: Stack(
+            children: [
+              Align(
+                child: CircularProgressIndicator(),
+              )
+            ],
+          ),
+        )
+      ],
     );
   }
 

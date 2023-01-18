@@ -77,7 +77,7 @@ class _VoiceButtonState extends State<VoiceButtonComponent> {
     if (text.length > 0) {
       try {
         widget.connection!.output
-            .add(Uint8List.fromList(utf8.encode(text + "\r\n")));
+            .add(Uint8List.fromList(utf8.encode(text + "\r")));
         await widget.connection!.output.allSent;
 
         setState(() {

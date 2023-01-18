@@ -43,11 +43,10 @@ class _ButtonState extends State<ButtonDoubleComponent> {
   Widget build(BuildContext context) {
     return (Container(
         height: 60,
-        width: 90,
+        width: 150,
         child: FlatButton(
           onPressed: () {
-            _sendMessage(buttonClicado ? widget.comandOn! : widget.comandOff!);
-            _changeButtonColor();
+            _sendMessage();
           },
           child: Text(
             widget.buttonName!,
@@ -60,22 +59,18 @@ class _ButtonState extends State<ButtonDoubleComponent> {
         )));
   }
 
-  _sendMessage(text) async {
-    text = text.trim();
-    textEditingController.clear();
+  _sendMessage() async {
+    try {
+      widget.connection!.output
+          .add(Uint8List.fromList(utf8.encode("m" +"\r")));
+      await widget.connection!.output.allSent;
 
-    if (text.length > 0) {
-      try {
-        widget.connection!.output
-            .add(Uint8List.fromList(utf8.encode(text + "\r\n")));
-        await widget.connection!.output.allSent;
-
-        setState(() {
-          messages.add(_Message(widget.clientID, text));
-        });
-      } catch (e) {
-        setState(() {});
-      }
+      setState(() {
+        messages.add(_Message(widget.clientID, "m" ));
+      });
+    } catch (e) {
+      setState(() {});
     }
   }
+
 }
